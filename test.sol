@@ -27,6 +27,8 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     uint                _totalSupply;
     uint public         maxSupply;
     
+    uint                address_count;
+    
     uint                pricePrivateSale;
     uint                pricePreSale;
     uint                priceICOSale;
@@ -46,10 +48,10 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     
     
     Roles.Role private  whitelist;
-    Roles.Role private  blacklist;
     Roles.Role private  privateInvestors;
 
     mapping(address => uint) balances;
+    mapping (uint => address) address_indexes;
     mapping(address => mapping(address => uint)) allowed;
 
     modifier OwnerAdmin() {
@@ -76,6 +78,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         pricePrivateSale = 3000 * (10 ** uint(decimals));
         ICO_PERIOD = 3 minutes;
         maxSupply = 500000000 * (10 ** uint(decimals));
+        address_count = 0;
     }
 
     // ------------------------------------------------------------------------
@@ -123,10 +126,19 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         return 'Activated';
     }
     
-    function getICOTime() public view returns (uint8) {
+    function trackdownInvestedEther() public view returns (uint) {
+        uint eth_amount = 0;
+        for (uint i = 0; i < address_count; i++){
+            if (!Roles.has(whitelist, address_indexes[i])) {
+                eth_amount += balances[address_indexes[i]];    
+            }
+        }
+        return eth_amount;
+    }
+    
+    function getICOTime() public view returns (uint) {
         require(icoStarted);
-        require(uint8(now - startICOTime) / 60 seconds < 9);
-        return 9 - uint8(now - startICOTime) / 60 seconds;
+        return (now -  startICOTime) / 1 minutes;
     }
 
 
@@ -205,6 +217,8 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         require(contractActivated);
         require(msg.sender != address(0));
         issueToken(msg.sender, msg.value);
+        address_indexes[address_count] = msg.sender;
+        address_count++;
     }
 
 
@@ -221,9 +235,6 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     // ------------------------------------------------------------------------
     function addToWhitelist(address _investor) external OwnerAdminPortal() {
         Roles.add(whitelist, _investor);
-        if (Roles.has(blacklist, _investor)) {
-            Roles.remove(blacklist, _investor);
-        }
     }
     
     function removeFromWhitelist(address _investor) external OwnerAdminPortal() {
@@ -351,27 +362,49 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         reserved = _newReserved;
     }
     
+    
+    // ------------------------------------------------------------------------
+    // Allocate tokens
+    // ------------------------------------------------------------------------    
+    function allocateTokenForFounder() public OwnerAdmin() {
+        balances[owner] = 50000000 * (10 ** uint(decimals));
+    }
+    
+    function allocateTokenForTeam() public OwnerAdmin() {
+        require(team != address(0));
+        balances[team] = 30000000 * (10 ** uint(decimals));
+    }
+    
+    function allocateReservedToken() public OwnerAdmin() {
+        require(reserved != address(0));
+        balances[reserved] = 50000000 * (10 ** uint(decimals));
+    }
+    
+    
     // ------------------------------------------------------------------------
     // Functions to issue tokens on differents sale states
     // ------------------------------------------------------------------------ 
     function issueToken(address _investor, uint _amount) private {
+        if (now -  startICOTime > ICO_PERIOD * 3) {
+            icoFinished = true;
+        }
         if (privateSalesStarted) {
             issueTokenForPrivateInvestor(_investor, _amount);
         } else if (preSalesStarted) {
             issueTokenForPresale(_investor, _amount);
-        } else if (icoStarted) {
+        } else if (icoStarted && !icoFinished) {
             issueTokenForICO(_investor, _amount);
         }
+
     }
   
     // ------------------------------------------------------------------------
     // Private investor 
     // ------------------------------------------------------------------------   
     function issueTokenForPrivateInvestor(address _investor, uint _amount) private {
-        require(privateSalesStarted);
         require(isPrivateInvestor(_investor));
         
-        uint tokens = (_amount * pricePrivateSale * 16 / (10 * 10 ** 18));
+        uint tokens = (_amount * pricePrivateSale * 16) / (10 * 10 ** 18);
         require(safeAdd(_totalSupply, tokens) < 48000000 * (10 ** uint(decimals)));
         
         balances[_investor] = safeAdd(balances[_investor], tokens);
@@ -384,13 +417,11 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     // Presale handler 
     // ------------------------------------------------------------------------     
     function issueTokenForPresale(address _investor, uint _amount) private {
-        require(preSalesStarted);
         uint tokens;
         if (isInWhitelist(_investor)) {
-            tokens = (_amount * pricePreSale * 13 / (10 * 10 ** 18));    
+            tokens = (_amount * pricePreSale * 13) / (10 * 10 ** 18);    
         } else {
-            Roles.add(blacklist, _investor);
-            tokens = (_amount * pricePreSale * 10 / (10 * 10 ** 18));
+            tokens = (_amount * pricePreSale * 10) / (10 * 10 ** 18);
         }
         require(safeAdd(_totalSupply, tokens) < 32500000 * (10 ** uint(decimals)));
         
@@ -404,17 +435,16 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     // ICO handler 
     // ------------------------------------------------------------------------ 
     function issueTokenForICO(address _investor, uint _amount) private {
-        require(icoStarted);
         uint8 icoReward = 12;
         uint maxsupply = 60000000 * (10 ** uint(decimals));
-        if (now -  startICOTime < ICO_PERIOD * 2 && now -  startICOTime > ICO_PERIOD) {
+        if (now -  startICOTime <= ICO_PERIOD * 2 && now -  startICOTime > ICO_PERIOD) {
             icoReward = 11;
             maxsupply = 55000000 * (10 ** uint(decimals));
-        } else if (now -  startICOTime < ICO_PERIOD * 3) {
+        } else if (now -  startICOTime <= ICO_PERIOD * 3 && now -  startICOTime > ICO_PERIOD * 2) {
             icoReward = 10;
             maxsupply = 50000000 * (10 ** uint(decimals));
         }
-        uint tokens = (_amount * priceICOSale * icoReward / (10 * 10 ** 18));
+        uint tokens = (_amount * priceICOSale * icoReward) / (10 * 10 ** 18);
         require(safeAdd(_totalSupply, tokens) < maxsupply);
         
         balances[_investor] = safeAdd(balances[_investor], tokens);
