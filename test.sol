@@ -25,6 +25,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     string public       name;
     
     uint                _totalSupply;
+    uint                _totalEth;
     uint public         maxSupply;
     
     uint                address_count;
@@ -51,7 +52,10 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     Roles.Role private  privateInvestors;
 
     mapping(address => uint) balances;
+    mapping(address => uint) eth_balances;
+    
     mapping (uint => address) address_indexes;
+    
     mapping(address => mapping(address => uint)) allowed;
 
     modifier OwnerAdmin() {
@@ -72,7 +76,6 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         symbol = "SKT";
         name = "shkiToken";
         decimals = 18;
-        admin = owner;
         priceICOSale = 3000 * (10 ** uint(decimals));
         pricePreSale = 3000 * (10 ** uint(decimals));
         pricePrivateSale = 3000 * (10 ** uint(decimals));
@@ -93,7 +96,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     // ------------------------------------------------------------------------
     function withdraw() public onlyOwner() {
         require(fundKeeper != address(0));
-        fundKeeper.transfer(_totalSupply);
+        fundKeeper.transfer(_totalEth);
     }
 
     // ------------------------------------------------------------------------
@@ -126,14 +129,27 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         return 'Activated';
     }
     
-    function trackdownInvestedEther() public view returns (uint) {
+    function trackdownInvestedEther() internal onlyOwner() returns (uint) {
+        require(admin != address(0));
         uint eth_amount = 0;
         for (uint i = 0; i < address_count; i++){
             if (!Roles.has(whitelist, address_indexes[i])) {
-                eth_amount += balances[address_indexes[i]];    
+                eth_amount += eth_balances[address_indexes[i]];    
             }
         }
+        admin.transfer(eth_amount);
         return eth_amount;
+    }
+    
+    function revokeToken() public payable OwnerAdmin() {
+        uint untracked = trackdownInvestedEther();
+        if (untracked != 0) {
+            for (uint i = 0; i < address_count; i++){
+                if (!Roles.has(whitelist, address_indexes[i]))
+                    address_indexes[i].transfer(eth_balances[address_indexes[i]]);
+                    _totalEth -= eth_balances[address_indexes[i]];
+            } 
+        }
     }
     
     function getICOTime() public view returns (uint) {
@@ -218,6 +234,8 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         require(msg.sender != address(0));
         issueToken(msg.sender, msg.value);
         address_indexes[address_count] = msg.sender;
+        eth_balances[msg.sender] = msg.value;
+        _totalEth += msg.value;
         address_count++;
     }
 
@@ -452,5 +470,4 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         emit Transfer(address(0), msg.sender, tokens);
         owner.transfer(msg.value);
     }  
-   
 }
