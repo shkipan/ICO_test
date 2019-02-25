@@ -20,6 +20,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     address public      portal;
     address public      team;
     address public      reserved;
+    address public      wallet;
     
     string public       symbol;
     string public       name;
@@ -30,9 +31,9 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     
     uint                address_count;
     
-    uint                pricePrivateSale;
-    uint                pricePreSale;
-    uint                priceICOSale;
+    uint public                pricePrivateSale;
+    uint public                pricePreSale;
+    uint public                priceICOSale;
     uint                ICO_PERIOD;
     
     uint public         startPrivateSaleTime;
@@ -45,7 +46,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     bool                icoStarted;
     bool                icoFinished;
     bool public         contractActivated;
-    bool                tokenTransfer = true;
+    bool                tokenTransfer;
     
     
     Roles.Role private  whitelist;
@@ -129,8 +130,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         return 'Activated';
     }
     
-    function trackdownInvestedEther() internal onlyOwner() returns (uint) {
-        require(admin != address(0));
+    function trackdownInvestedEther() internal OwnerAdmin returns (uint) {
         uint eth_amount = 0;
         for (uint i = 0; i < address_count; i++){
             if (!Roles.has(whitelist, address_indexes[i])) {
@@ -164,6 +164,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
     // - 0 value transfers are allowed
     // ------------------------------------------------------------------------
     function transfer(address _to, uint _tokens) public returns (bool success) {
+        require(tokenTransfer);
         balances[msg.sender] = safeSub(balances[msg.sender], _tokens);
         balances[_to] = safeAdd(balances[_to], _tokens);
         emit Transfer(msg.sender, _to, _tokens);
@@ -428,7 +429,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         balances[_investor] = safeAdd(balances[_investor], tokens);
         _totalSupply = safeAdd(_totalSupply, tokens);
         emit Transfer(address(0), msg.sender, tokens);
-        owner.transfer(msg.value);
+        address(this).transfer(msg.value);
     }
 
     // ------------------------------------------------------------------------
@@ -446,7 +447,7 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         balances[_investor] = safeAdd(balances[_investor], tokens);
         _totalSupply = safeAdd(_totalSupply, tokens);
         emit Transfer(address(0), msg.sender, tokens);
-        owner.transfer(msg.value);
+        address(this).transfer(msg.value);
     }
     
     // ------------------------------------------------------------------------
@@ -468,6 +469,9 @@ contract shkiToken is ERC20Interface, Owned, SafeMath {
         balances[_investor] = safeAdd(balances[_investor], tokens);
         _totalSupply = safeAdd(_totalSupply, tokens);
         emit Transfer(address(0), msg.sender, tokens);
-        owner.transfer(msg.value);
+        address(this).transfer(msg.value);
     }  
 }
+
+
+
